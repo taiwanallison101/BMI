@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vibe Coding 健康儀表板</title>
+    <!-- 使用 Tailwind CSS 打造精美的現代化 UI -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 載入系統預設中文字型，確保繁體中文呈現完美 */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Microsoft JhengHei", sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800">
+
+    <div class="max-w-5xl mx-auto px-4 py-8">
+        
+        <!-- 頂部標題區 -->
+        <header class="flex flex-col md:flex-row md:items-center md:justify-between border-b border-slate-200 pb-6 mb-8">
+            <div>
+                <div class="flex items-center gap-2">
+                    <span class="text-3xl">🌱</span>
+                    <h1 class="text-3xl font-bold tracking-tight text-slate-900">Vibe 健康儀表板</h1>
+                </div>
+                <p class="text-slate-500 mt-2">簡單、直觀、聽得懂人話的 AI 健康與 BMI 管理工具</p>
+            </div>
+            <!-- API Key 設定區 -->
+            <div class="mt-4 md:mt-0 bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col gap-2 max-w-sm w-full">
+                <label class="text-xs font-semibold text-slate-500 tracking-wider uppercase">Gemini API Key 🔑</label>
+                <div class="flex gap-2">
+                    <input type="password" id="apiKeyInput" placeholder="貼上你的 API Key (AIzaSy...)" 
+                           class="flex-1 text-sm px-3 py-1.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-700">
+                    <button onclick="saveApiKey()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors">
+                        儲存
+                    </button>
+                </div>
+                <p class="text-[10px] text-slate-400">金鑰會安全保存在您的本地瀏覽器，不會外流。</p>
+            </div>
+        </header>
+
+        <!-- 自訂通知訊息元件 (取代傳統 alert) -->
+        <div id="toast" class="hidden fixed top-5 right-5 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 transform transition-all duration-300 translate-y-[-20px] opacity-0">
+            <span id="toastIcon">✨</span>
+            <span id="toastMessage" class="text-sm font-medium">這是通知訊息</span>
+        </div>
+
+        <!-- 主體內容網格 -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            
+            <!-- 左側：數據輸入與診斷卡片 -->
+            <div class="lg:col-span-1 space-y-6">
+                <!-- 輸入卡片 -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                    <h2 class="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                        <span>📝</span> 輸入今日數據
+                    </h2>
+                    
+                    <form id="healthForm" onsubmit="handleFormSubmit(event)" class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 mb-1">今日日期</label>
+                            <input type="date" id="inputDate" required 
+                                   class="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 mb-1">身高 (cm)</label>
+                                <input type="number" step="0.1" id="inputHeight" placeholder="170.0" required 
+                                       class="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 mb-1">體重 (kg)</label>
+                                <input type="number" step="0.1" id="inputWeight" placeholder="65.0" required 
+                                       class="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                            </div>
+                        </div>
+                        
+                        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-md shadow-emerald-100 flex justify-center items-center gap-2">
+                            <span>🚀</span> 算 BMI 並記錄下來
+                        </button>
+                    </form>
+                </div>
+
+                <!-- 當前狀態診斷卡片 -->
+                <div id="statusCard" class="bg-gradient-to-br from-emerald-50 to-teal-50 p-6 rounded-2xl shadow-sm border border-emerald-100/50">
+                    <h3 class="text-xs font-bold text-emerald-800 tracking-wider uppercase mb-2">最新身體診斷</h3>
+                    <div class="flex items-baseline gap-2 mb-3">
+                        <span id="latestBmi" class="text-4xl font-extrabold text-emerald-950">--</span>
+                        <span class="text-emerald-700 font-semibold text-sm">BMI</span>
+                    </div>
+                    <div id="latestStatusBadge" class="inline-block bg-emerald-200/50 text-emerald-800 font-bold text-xs px-2.5 py-1 rounded-full mb-4">
+                        等待資料輸入
+                    </div>
+                    <p id="latestQuote" class="text-emerald-900/80 text-sm leading-relaxed">
+                        您還沒有輸入任何資料喔！請在上方輸入您今天的體重，體驗 Vibe 健檢！
+                    </p>
+                </div>
+            </div>
+
+            <!-- 右側：歷史數據與圖表、AI 建議 -->
+            <div class="lg:col-span-2 space-y-8">
+                
+                <!-- 動態 SVG 趨勢圖卡片 -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <span>📈</span> 體重變化趨勢
+                        </h2>
+                        <span class="text-xs text-slate-400">（自動同步最新 7 筆數據）</span>
+                    </div>
+                    
+                    <!-- SVG 畫布容器 -->
+                    <div class="w-full h-64 bg-slate-50 rounded-xl p-4 relative" id="chartContainer">
+                        <svg id="trendChart" class="w-full h-full"></svg>
+                    </div>
+                </div>
+
+                <!-- AI 營養師專區 -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+                        <div>
+                            <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                                <span>🤖</span> Gemini AI 量身飲食菜單
+                            </h2>
+                            <p class="text-xs text-slate-500 mt-1">根據您最後一次的 BMI，由 Gemini 為您特製一日菜單</p>
+                        </div>
+                        <button onclick="askGeminiDiet()" id="aiBtn" class="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold py-2.5 px-5 rounded-xl text-sm transition-all shadow-md shadow-indigo-100 flex items-center gap-2">
+                            <span id="aiBtnIcon">✨</span> <span id="aiBtnText">諮詢 AI 營養師</span>
+                        </button>
+                    </div>
+
+                    <!-- AI 建議回覆框 -->
+                    <div id="aiResponseBox" class="border border-slate-100 bg-slate-50/50 rounded-xl p-5 min-h-[120px] flex flex-col justify-center">
+                        <div id="aiPlaceholder" class="text-center text-slate-400 space-y-2">
+                            <p class="text-2xl">🥗</p>
+                            <p class="text-sm">點擊上方按鈕，讓 AI 為你規劃今日專屬飲食！</p>
+                            <p class="text-[11px] text-slate-400/80">（提示：如果沒輸入 API Key，會使用內建的離線營養師回答唷）</p>
+                        </div>
+                        <!-- 真正顯示內容的區塊 -->
+                        <div id="aiContent" class="hidden text-slate-700 text-sm leading-relaxed whitespace-pre-line space-y-4">
+                            <!-- 動態插入 -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 歷史數據表格 -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <span>📋</span> 歷史健康紀錄
+                        </h2>
+                        <button onclick="clearAllData()" class="text-xs font-semibold text-rose-500 hover:text-rose-700 transition-colors">
+                            清空歷史資料
+                        </button>
+                    </div>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm">
+                            <thead>
+                                <tr class="border-b border-slate-100 text-slate-400 font-semibold">
+                                    <th class="py-3 px-4">日期</th>
+                                    <th class="py-3 px-4">身高 (cm)</th>
+                                    <th class="py-3 px-4">體重 (kg)</th>
+                                    <th class="py-3 px-4">BMI</th>
+                                    <th class="py-3 px-4 text-right">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historyTableBody" class="divide-y divide-slate-100 text-slate-600">
+                                <!-- 動態插入 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- 頁尾宣告 -->
+    <footer class="text-center text-xs text-slate-400 py-12">
+        <p>© 2026 Vibe Coding 健康教練專案. 為健康，永不放棄！</p>
+    </footer>
+
+    <!-- JavaScript 核心邏輯 -->
+    <script>
+        // ==========================================
+        // 1. 初始化與全域變數
+        // ==========================================
+        const localStorageKey = "vibe_health_records";
+        const apiKeyStorageKey = "gemini_api_key";
+        
+        // 預設的模擬歷史資料（若使用者本地沒資料，就用這個，讓他一進來就有圖表看！）
+        const defaultRecords = [
+            { id: 1, date: "2026-07-01", height: 170, weight: 75.0, bmi: 25.95 },
+            { id: 2, date: "2026-07-02", height: 170, weight: 74.5, bmi: 25.78 },
+            { id: 3, date: "2026-07-03", height: 170, weight: 74.1, bmi: 25.64 },
+            { id: 4, date: "2026-07-04", height: 170, weight: 73.8, bmi: 25.54 }
+        ];
+
+        let records = [];
+
+        // 網頁載入完成後的進入點
+        window.onload = function() {
+            // 1. 載入 API Key
+            const savedKey = localStorage.getItem(apiKeyStorageKey);
+            if (savedKey) {
+                document.getElementById("apiKeyInput").value = savedKey;
+            }
+
+            // 2. 載入歷史資料
+            const storedData = localStorage.getItem(localStorageKey);
+            if (storedData) {
+                records = JSON.parse(storedData);
+            } else {
+                records = [...defaultRecords];
+                localStorage.setItem(localStorageKey, JSON.stringify(records));
+            }
+
+            // 3. 設定今天日期輸入框預設值
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById("inputDate").value = today;
+
+            // 4. 更新畫面
+            updateUI();
+
+            // 5. 監聽視窗縮放，讓 SVG 圖表能自適應大小
+            window.addEventListener('resize', drawChart);
+        };
+
+        // ==========================================
+        // 2. UI 更新與繪製邏輯
+        // ==========================================
+        function updateUI() {
+            // 按日期先後排序，確保圖表從左到右
+            records.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+            renderTable();
+            renderLatestDiagnostic();
+            drawChart();
+        }
+
+        // 渲染表格
+        function renderTable() {
+            const tbody = document.getElementById("historyTableBody");
+            tbody.innerHTML = "";
+
+            // 倒序顯示，讓最新的一筆在最上面
+            const displayRecords = [...records].reverse();
+
+            if (displayRecords.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-slate-400">目前沒有資料，快在左側輸入第一筆吧！</td></tr>`;
+                return;
+            }
+
+            displayRecords.forEach(record => {
+                const tr = document.createElement("tr");
+                tr.className = "hover:bg-slate-50 transition-colors";
+                tr.innerHTML = `
+                    <td class="py-3.5 px-4 font-medium text-slate-900">${record.date}</td>
+                    <td class="py-3.5 px-4">${record.height}</td>
+                    <td class="py-3.5 px-4">${record.weight}</td>
+                    <td class="py-3.5 px-4">
+                        <span class="font-semibold ${getBmiColorClass(record.bmi)}">${record.bmi.toFixed(2)}</span>
+                    </td>
+                    <td class="py-3.5 px-4 text-right">
+                        <button onclick="deleteRecord(${record.id})" class="text-rose-400 hover:text-rose-600 font-medium text-xs transition-colors">刪除</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // 渲染最新健康診斷
+        function renderLatestDiagnostic() {
+            if (records.length === 0) {
+                document.getElementById("latestBmi").innerText = "--";
+                document.getElementById("latestStatusBadge").className = "inline-block bg-slate-200 text-slate-600 font-bold text-xs px-2.5 py-1 rounded-full mb-4";
+                document.getElementById("latestStatusBadge").innerText = "尚未有數據";
+                document.getElementById("latestQuote").innerText = "您還沒有輸入任何資料喔！請在上方輸入您今天的體重，體驗 Vibe 健檢！";
+                return;
+            }
+
+            // 取得日期最晚（最新）的一筆
+            const latest = records[records.length - 1];
+            const bmi = latest.bmi;
+            
+            document.getElementById("latestBmi").innerText = bmi.toFixed(2);
+            
+            const badge = document.getElementById("latestStatusBadge");
+            const quote = document.getElementById("latestQuote");
+
+            if (bmi < 18.5) {
+                badge.className = "inline-block bg-amber-100 text-amber-800 font-bold text-xs px-2.5 py-1 rounded-full mb-4";
+                badge.innerText = "體重過輕";
+                quote.innerText = "目前您的體重稍輕。建議可以稍微增加營養與熱量攝取，配合同步的肌力鍛鍊，讓身材更有線條更健康！";
+            } else if (bmi >= 18.5 && bmi < 24) {
+                badge.className = "inline-block bg-emerald-100 text-emerald-800 font-bold text-xs px-2.5 py-1 rounded-full mb-4";
+                badge.innerText = "標準體重";
+                quote.innerText = "恭喜您！體重完美維持在標準範圍！這說明您的生活作息與飲食非常規律，請繼續保持這份熱情！";
+            } else {
+                badge.className = "inline-block bg-rose-100 text-rose-800 font-bold text-xs px-2.5 py-1 rounded-full mb-4";
+                badge.innerText = "體重過重";
+                quote.innerText = "目前數值落在過重區間。不用擔心！少吃精緻糖、多喝水，搭配每天維持 30 分鐘的快走或有氧，健康就在前方！";
+            }
+        }
+
+        // 取得 BMI 的文字顏色 class
+        function getBmiColorClass(bmi) {
+            if (bmi < 18.5) return "text-amber-600";
+            if (bmi >= 18.5 && bmi < 24) return "text-emerald-600";
+            return "text-rose-600";
+        }
+
+        // ==========================================
+        // 3. 核心：手刻 SVG 趨勢折線圖
+        // ==========================================
+        function drawChart() {
+            const svg = document.getElementById("trendChart");
+            svg.innerHTML = ""; // 先清空
+
+            // 僅抓取最近 7 筆來呈現，避免畫面太擠
+            const chartData = records.slice(-7);
+
+            if (chartData.length < 2) {
+                svg.innerHTML = `<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#94a3b8" font-size="14">數據至少需要 2 筆才能生成折線趨勢圖喔！</text>`;
+                return;
+            }
+
+            const width = svg.clientWidth || svg.getBoundingClientRect().width;
+            const height = svg.clientHeight || svg.getBoundingClientRect().height;
+
+            // 圖表邊框保留間距 (Padding)
+            const paddingLeft = 45;
+            const paddingRight = 20;
+            const paddingTop = 30;
+            const paddingBottom = 40;
+
+            const plotWidth = width - paddingLeft - paddingRight;
+            const plotHeight = height - paddingTop - paddingBottom;
+
+            // 尋找體重的最大與最小值（動態調整 Y 軸刻度）
+            const weights = chartData.map(d => d.weight);
+            let maxW = Math.max(...weights);
+            let minW = Math.min(...weights);
+
+            // 若最大最小值一樣，則手動拉開差距
+            if (maxW === minW) {
+                maxW += 5;
+                minW -= 5;
+            } else {
+                // Y 軸上下留點餘裕，畫面比較好看
+                const range = maxW - minW;
+                maxW += range * 0.15;
+                minW -= range * 0.15;
+            }
+
+            // 1. 繪製 Y 軸背景虛線 (網格) 與 Y 軸刻度標籤
+            const gridLines = 4;
+            for (let i = 0; i <= gridLines; i++) {
+                const ratio = i / gridLines;
+                const y = paddingTop + plotHeight * (1 - ratio);
+                const val = minW + (maxW - minW) * ratio;
+
+                // 橫向虛線
+                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                line.setAttribute("x1", paddingLeft);
+                line.setAttribute("y1", y);
+                line.setAttribute("x2", width - paddingRight);
+                line.setAttribute("y2", y);
+                line.setAttribute("stroke", "#e2e8f0");
+                line.setAttribute("stroke-dasharray", "4 4");
+                svg.appendChild(line);
+
+                // Y 軸文字
+                const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                text.setAttribute("x", paddingLeft - 10);
+                text.setAttribute("y", y + 4);
+                text.setAttribute("text-anchor", "end");
+                text.setAttribute("fill", "#64748b");
+                text.setAttribute("font-size", "11");
+                text.textContent = val.toFixed(1);
+                svg.appendChild(text);
+            }
+
+            // 2. 計算每個點的 X 和 Y 座標
+            const points = chartData.map((d, index) => {
+                const ratioX = index / (chartData.length - 1);
+                const x = paddingLeft + plotWidth * ratioX;
+
+                const ratioY = (d.weight - minW) / (maxW - minW);
+                const y = paddingTop + plotHeight * (1 - ratioY);
+
+                return { x, y, date: d.date.substring(5), weight: d.weight }; // date 只要月-日就好
+            });
+
+            // 3. 繪製折線
+            let pathD = `M ${points[0].x} ${points[0].y}`;
+            for (let i = 1; i < points.length; i++) {
+                pathD += ` L ${points[i].x} ${points[i].y}`;
+            }
+
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            path.setAttribute("d", pathD);
+            path.setAttribute("fill", "none");
+            path.setAttribute("stroke", "#10b981"); // emerald-500
+            path.setAttribute("stroke-width", "3");
+            path.setAttribute("stroke-linecap", "round");
+            path.setAttribute("stroke-linejoin", "round");
+            svg.appendChild(path);
+
+            // 4. 繪製折線節點 (小圓點) 與 X 軸日期標籤
+            points.forEach(p => {
+                // 小圓圈
+                const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                circle.setAttribute("cx", p.x);
+                circle.setAttribute("cy", p.y);
+                circle.setAttribute("r", "5");
+                circle.setAttribute("fill", "#ffffff");
+                circle.setAttribute("stroke", "#10b981");
+                circle.setAttribute("stroke-width", "3");
+                svg.appendChild(circle);
+
+                // 節點上方的重量文字提示
+                const tip = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                tip.setAttribute("x", p.x);
+                tip.setAttribute("y", p.y - 10);
+                tip.setAttribute("text-anchor", "middle");
+                tip.setAttribute("fill", "#0f172a"); // dark slate
+                tip.setAttribute("font-weight", "bold");
+                tip.setAttribute("font-size", "11");
+                tip.textContent = `${p.weight}kg`;
+                svg.appendChild(tip);
+
+                // 下方的 X 軸日期
+                const xText = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                xText.setAttribute("x", p.x);
+                xText.setAttribute("y", height - paddingBottom + 20);
+                xText.setAttribute("text-anchor", "middle");
+                xText.setAttribute("fill", "#64748b");
+                xText.setAttribute("font-size", "11");
+                xText.textContent = p.date;
+                svg.appendChild(xText);
+            });
+        }
+
+        // ==========================================
+        // 4. 事件處理 (新增、刪除、清空)
+        // ==========================================
+        function handleFormSubmit(e) {
+            e.preventDefault(); // 阻止網頁刷新重新載入
+
+            const dateInput = document.getElementById("inputDate").value;
+            const heightInput = parseFloat(document.getElementById("inputHeight").value);
+            const weightInput = parseFloat(document.getElementById("inputWeight").value);
+
+            // 數據驗證與大白話防錯
+            if (!dateInput) {
+                showToast("⚠️ 請選擇您想記錄的日期喔！", "orange");
+                return;
+            }
+            if (heightInput <= 0 || isNaN(heightInput)) {
+                showToast("⚠️ 身高不可以是 0 或負數呀！請重新輸入。", "orange");
+                return;
+            }
+            if (weightInput <= 0 || isNaN(weightInput)) {
+                showToast("⚠️ 體重不可以是 0 或負數呀！請重新輸入。", "orange");
+                return;
+            }
+
+            // 計算 BMI
+            const heightInMeters = heightInput / 100;
+            const calculatedBmi = weightInput / (heightInMeters * heightInMeters);
+
+            // 建立新資料物件
+            const newRecord = {
+                id: Date.now(), // 用時間戳記當作不重複的 ID
+                date: dateInput,
+                height: heightInput,
+                weight: weightInput,
+                bmi: parseFloat(calculatedBmi.toFixed(2))
+            };
+
+            // 如果該日期已經有資料，詢問是否覆蓋？
+            const existingIndex = records.findIndex(r => r.date === dateInput);
+            if (existingIndex !== -1) {
+                records[existingIndex] = newRecord; // 直接覆蓋
+                showToast("✏️ 已為您更新該日期的健康數值！", "emerald");
+            } else {
+                records.push(newRecord);
+                showToast("🎉 成功新增一筆體重數據！", "emerald");
+            }
+
+            // 存入 LocalStorage
+            localStorage.setItem(localStorageKey, JSON.stringify(records));
+
+            // 更新畫面
+            updateUI();
+
+            // 清空體重輸入框，方便下一次使用
+            document.getElementById("inputWeight").value = "";
+        }
+
+        // 刪除單筆紀錄
+        function deleteRecord(id) {
+            records = records.filter(r => r.id !== id);
+            localStorage.setItem(localStorageKey, JSON.stringify(records));
+            updateUI();
+            showToast("🗑️ 紀錄已成功刪除！", "rose");
+        }
+
+        // 清空所有紀錄
+        function clearAllData() {
+            // 利用自訂確認流程
+            if (confirm("🚨 您確定要清空所有的健康歷史紀錄嗎？清空後就無法復原囉！")) {
+                records = [];
+                localStorage.setItem(localStorageKey, JSON.stringify(records));
+                updateUI();
+                showToast("🧹 所有歷史數據已被清空！", "slate");
+            }
+        }
+
+        // ==========================================
+        // 5. API 金鑰管理
+        // ==========================================
+        function saveApiKey() {
+            const key = document.getElementById("apiKeyInput").value.trim();
+            if (key === "") {
+                localStorage.removeItem(apiKeyStorageKey);
+                showToast("🗑️ 已清除儲存的 API Key", "slate");
+            } else {
+                localStorage.setItem(apiKeyStorageKey, key);
+                showToast("💾 API Key 已儲存在您的本地瀏覽器！", "emerald");
+            }
+        }
+
+        // ==========================================
+        // 6. Gemini API 串接與離線營養師 fallback 邏輯
+        // ==========================================
+        async function askGeminiDiet() {
+            if (records.length === 0) {
+                showToast("⚠️ 請先在左側輸入至少一筆身體數據，AI 才能幫你規劃唷！", "orange");
+                return;
+            }
+
+            // 取得最新的一筆紀錄
+            const latest = records[records.length - 1];
+            const height = latest.height;
+            const weight = latest.weight;
+            const bmi = latest.bmi;
+
+            // 判斷狀態
+            let status = "標準體重";
+            if (bmi < 18.5) status = "體重過輕";
+            else if (bmi >= 24) status = "體重過重";
+
+            // 進入 Loading 狀態
+            const aiBtn = document.getElementById("aiBtn");
+            const aiBtnText = document.getElementById("aiBtnText");
+            const aiBtnIcon = document.getElementById("aiBtnIcon");
+            const aiPlaceholder = document.getElementById("aiPlaceholder");
+            const aiContent = document.getElementById("aiContent");
+
+            aiBtn.disabled = true;
+            aiBtnText.innerText = "諮詢中...";
+            aiBtnIcon.innerText = "⏳";
+            aiPlaceholder.classList.add("hidden");
+            aiContent.classList.remove("hidden");
+            aiContent.innerHTML = `<div class="flex items-center gap-3 text-slate-500">
+                <span class="animate-spin text-xl">🥗</span> 營養師正在精算熱量，請稍候 3~5 秒...
+            </div>`;
+
+            const apiKey = localStorage.getItem(apiKeyStorageKey) || "";
+
+            // 💡 【大白話 Vibe 邏輯】：如果有 API Key，就串接真正的 Gemini 宇宙；如果沒有，就用我們精美設計的離線擬真算法回覆！
+            if (apiKey === "") {
+                // 延遲一下下，模擬網路載入，增加體驗真實度！
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                
+                // 取得離線內容
+                const offlineResponse = getOfflineDietPlan(height, weight, bmi, status);
+                aiContent.innerHTML = offlineResponse;
+
+                // 恢復按鈕
+                aiBtn.disabled = false;
+                aiBtnText.innerText = "諮詢 AI 營養師";
+                aiBtnIcon.innerText = "✨";
+                showToast("💡 本次使用內建離線營養師服務！", "slate");
+            } else {
+                // 串接真實的 Gemini 2.5 Flash API (支援 Exponential Backoff)
+                const prompt = `
+                你是一位專業的網紅健身營養師。
+                我的身高是 ${height} 公分，體重是 ${weight} 公斤，計算出來的 BMI 是 ${bmi.toFixed(2)}，健康狀態屬於「${status}」。
+                請用親切、鼓勵、口語化的繁體中文（台灣地區常用字詞），幫我開立一份簡單、在便利商店（如 7-11、全家）或外食也很容易買到的「一日健康飲食菜單」（包含早餐、午餐、晚餐建議）。
+                並且給我一個今天鼓勵的一句話！排版要整齊條理分明、多用 Emoji。
+                請不要給任何多餘的引言或廢話，直接從菜單開始。
+                `;
+
+                // 呼叫 API 函式 (包含 exponential backoff 機制)
+                const resultText = await callGeminiWithRetry(apiKey, prompt);
+
+                if (resultText) {
+                    aiContent.innerHTML = `
+                        <div class="bg-indigo-50 border border-indigo-100 p-3 rounded-xl text-xs text-indigo-800 font-medium mb-4 flex items-center gap-2">
+                            <span>🚀</span> 本次菜單已成功透過 Gemini 2.5 精準運算產出！
+                        </div>
+                        <div>${resultText}</div>
+                    `;
+                    showToast("✨ 成功取得 Gemini 客製化菜單！", "emerald");
+                } else {
+                    // 如果重試 5 次都失敗，顯示友善的錯誤訊息
+                    aiContent.innerHTML = `
+                        <div class="p-4 bg-rose-50 border border-rose-100 rounded-xl text-rose-800 text-sm space-y-2">
+                            <p class="font-bold">❌ 連線 Gemini 時好像迷路了！</p>
+                            <p class="text-xs">
+                                這代表可能發生了以下其中一種狀況：<br>
+                                1. 您的 API Key 輸入不正確或已過期。<br>
+                                2. 目前與 Google AI Studio 的網路通道有點塞車。<br>
+                                <br>
+                                <b>教練悄悄話：</b>你可以先檢查右上角的 API Key 是否有複製完整，或者稍等 1 分鐘後再試一次！
+                            </p>
+                        </div>
+                    `;
+                }
+
+                // 恢復按鈕
+                aiBtn.disabled = false;
+                aiBtnText.innerText = "諮詢 AI 營養師";
+                aiBtnIcon.innerText = "✨";
+            }
+        }
+
+        // 呼叫 Gemini 2.5 Flash (包含 5 次指數型退避重試演算法)
+        async function callGeminiWithRetry(apiKey, promptText, retries = 5, delay = 1000) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const payload = {
+                contents: [{
+                    parts: [{ text: promptText }]
+                }]
+            };
+
+            for (let attempt = 1; attempt <= retries; attempt++) {
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                        if (generatedText) {
+                            return generatedText;
+                        }
+                    }
+                } catch (error) {
+                    // 不在主控台印出 retries，默默重試
+                }
+
+                // 若失敗，等候指數型時間後重試 (1s -> 2s -> 4s -> 8s -> 16s)
+                if (attempt < retries) {
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay *= 2; 
+                }
+            }
+            return null; // 重試完全失敗後返回 null
+        }
+
+        // 離線模擬生成菜單算法 (讓未填寫 Key 的使用者也能有 100% 擬真健康的體驗)
+        function getOfflineDietPlan(height, weight, bmi, status) {
+            let plan = "";
+            if (status === "體重過輕") {
+                plan = `
+                📌 <b>【今日增肌增重一日菜單建議】</b> (模擬營養師評估)<br><br>
+                🍳 <b>早餐：</b> 7-11 紐奧良烤雞三明治 + 統一高纖無糖豆漿 (補充足夠優質蛋白質與適量碳水)<br>
+                🍱 <b>午餐：</b> 便利商店健康雞肉便當 + 加一顆溫泉蛋 (強化優質油脂與熱量攝取)<br>
+                🍌 <b>下午點心：</b> 香蕉一根 + 一把無調味堅果 (補充天然微量元素與好油脂)<br>
+                🥩 <b>晚餐：</b> 舒肥雞胸肉 + 地瓜一杯 + 大份綠色蔬菜 (兼顧飽足感與修復肌肉)<br><br>
+                💡 <b>教練鼓勵：</b> 「體重只是數字，我們的目標是健康的身體線條！多吃對身體有益的原型食物，每天多動一點點，你真的很棒！」
+                `;
+            } else if (status === "標準體重") {
+                plan = `
+                📌 <b>【今日體態維持一日菜單建議】</b> (模擬營養師評估)<br><br>
+                🍳 <b>早餐：</b> 地瓜 1 顆 + 茶葉蛋 2 顆 + 熱美式咖啡 (低 GI 穩定血糖與啟動代謝)<br>
+                🍱 <b>午餐：</b> 烤多汁鮭魚便當 (飯換紫米飯) + 綜合沙拉搭配和風醬 (慢速吸收醣類與 Omega-3 好油)<br>
+                🥛 <b>下午點心：</b> 希臘式無糖優格 (增添益生菌與優質乳清蛋白)<br>
+                🥩 <b>晚餐：</b> 蒜香烤豬里肌 + 青花菜一大盤 + 糙米飯半碗 (高飽足、低負擔的完美收尾)<br><br>
+                💡 <b>教練鼓勵：</b> 「維持在標準體重是生活自律的最高展現！恭喜你擁有這麼棒的身體機能，請繼續保持這份讓人羨慕的節奏！」
+                `;
+            } else {
+                plan = `
+                📌 <b>【今日減脂控卡一日菜單建議】</b> (模擬營養師評估)<br><br>
+                🍳 <b>早餐：</b> 茶葉蛋 2 顆 + 無糖黑豆漿 (純蛋白質餐，控糖燃脂起點)<br>
+                🍱 <b>午餐：</b> 輕食雞肉沙拉 + 蒸地瓜 (中份) (低卡路里但提供工作所需的乾淨能量)<br>
+                🍎 <b>下午點心：</b> 富士蘋果一顆 + 多喝水 500ml (用膳食纖維擊退下午的空虛感)<br>
+                🥩 <b>晚餐：</b> 舒肥板腱牛排或雞肉 + 炒大白菜與香菇 (不要加醬) (充足蛋白質有助睡眠與肌肉維持)<br><br>
+                💡 <b>教練鼓勵：</b> 「羅馬不是一天造成的，身上的肉肉也是。每天只要在飲食上做對一個小選擇，累積起來就是驚人的蛻變！加油！」
+                `;
+            }
+            return plan;
+        }
+
+        // ==========================================
+        // 7. 通知元件控制
+        // ==========================================
+        function showToast(message, type = "slate") {
+            const toast = document.getElementById("toast");
+            const toastMsg = document.getElementById("toastMessage");
+            const toastIcon = document.getElementById("toastIcon");
+
+            // 根據不同類型顯示不同背景與圖標
+            let bgClass = "bg-slate-900";
+            let icon = "✨";
+            if (type === "emerald") {
+                bgClass = "bg-emerald-600";
+                icon = "✅";
+            } else if (type === "orange") {
+                bgClass = "bg-amber-600";
+                icon = "⚠️";
+            } else if (type === "rose") {
+                bgClass = "bg-rose-600";
+                icon = "🗑️";
+            }
+
+            toast.className = `fixed top-5 right-5 z-50 text-white px-5 py-3 rounded-xl shadow-lg flex items-center gap-2 transform transition-all duration-300 ${bgClass}`;
+            toastMsg.innerText = message;
+            toastIcon.innerText = icon;
+
+            // 顯示動畫
+            toast.classList.remove("hidden");
+            setTimeout(() => {
+                toast.classList.remove("translate-y-[-20px]", "opacity-0");
+                toast.classList.add("translate-y-0", "opacity-100");
+            }, 50);
+
+            // 3秒後自動消失
+            setTimeout(() => {
+                toast.classList.remove("translate-y-0", "opacity-100");
+                toast.classList.add("translate-y-[-20px]", "opacity-0");
+                setTimeout(() => {
+                    toast.add("hidden");
+                }, 300);
+            }, 3000);
+        }
+
+    </script>
+</body>
+</html>
